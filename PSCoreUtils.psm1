@@ -266,7 +266,6 @@ function Compare-Directory($Directory1, $Directory2) {
 # chext *.log txt
 # chext 1.json,2.ps1,3.jpg txt
 function chext {
-    [CmdletBinding()]
     param (
         [Parameter(Mandatory,
             ValueFromPipeline)]
@@ -283,4 +282,42 @@ function chext {
             Rename-Item $File ([io.path]::ChangeExtension($File, $Extention))
         }
     }
+}
+
+function New-WSLDistribution {
+    param (
+        [Parameter(Mandatory)]
+        [string]
+        [Alias("Source")]
+        $TarFile,
+        
+        [Parameter(Mandatory)]
+        [string]
+        [Alias("Name")]
+        $DistroName
+    )
+
+    $InstallLocation = "C:\wslDistroStorage\$DistroName"
+    if (Test-Path $InstallLocation) {
+        Write-Error "Distribution already exists" -ErrorAction Stop
+    }
+    mkdir -p $InstallLocation
+    wsl.exe --import $DistroName $InstallLocation $TarFile
+
+    Write-Host @'
+    Distribution created successfully.
+    To start the distribution, run the following command:
+    wsl -d $DistroName
+
+    To create a user account, run the following command in WSL:
+    dnf update -y && dnf install passwd sudo -y
+    UserName="tom"
+    adduser -G wheel $UserName
+    echo -e "[user]\ndefault=$UserName" >> /etc/wsl.conf
+    passwd $UserName
+
+    Restart the distribution to apply the changes.
+    wsl -t $DistroName
+    wsl -d $DistroName
+'@
 }
