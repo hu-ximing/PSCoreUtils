@@ -297,11 +297,11 @@ function New-WSLDistribution {
         $DistroName
     )
 
-    $InstallLocation = "C:\wslDistroStorage\$DistroName"
-    if (Test-Path $InstallLocation) {
+    $ExistingDistros = wsl -l | Where-Object {$_.Replace("`0","") -match "^$DistroName"}
+    if ([string]::IsNullOrEmpty($ExistingDistros) -ne $true) {
         Write-Error "Distribution already exists" -ErrorAction Stop
     }
-    mkdir -p $InstallLocation
+    $InstallLocation = "C:\wslDistroStorage\$DistroName"
     wsl.exe --import $DistroName $InstallLocation $TarFile
 
     Write-Host @'
@@ -311,10 +311,10 @@ function New-WSLDistribution {
 
     To create a user account, run the following command in WSL:
     dnf update -y && dnf install passwd sudo -y
-    UserName="tom"
-    adduser -G wheel $UserName
-    echo -e "[user]\ndefault=$UserName" >> /etc/wsl.conf
-    passwd $UserName
+    WSL_USER=tom
+    adduser -G wheel $WSL_USER
+    echo -e "[user]\ndefault=$WSL_USER" >> /etc/wsl.conf
+    passwd $WSL_USER
 
     Restart the distribution to apply the changes.
     wsl -t $DistroName
