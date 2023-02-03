@@ -250,16 +250,46 @@ function touch {
     }
 }
 
-function Get-Image($path) {
+function Get-Image {
+    param (
+        [Parameter(Mandatory)]
+        [string[]]
+        $Path
+    )
+    $FullPaths = @()
+    foreach ($Item in $Path) {
+        $FullPaths += (Get-Item $Item).FullName
+    }
     Add-Type -AssemblyName System.Drawing
-    $img = New-Object System.Drawing.Bitmap $path
-    return $img
+    foreach ($Item in $FullPaths) {
+        $Image = New-Object System.Drawing.Bitmap $Item
+        Write-Output $Item, $Image
+    }
 }
 
-function Compare-Directory($Directory1, $Directory2) {
-    $Directory1 = Get-ChildItem -Recurse $Directory1
-    $Directory2 = Get-ChildItem -Recurse $Directory2
-    Compare-Object $Directory1 $Directory2 -Property Name, Length
+function Compare-Directory() {
+    param (
+        [Parameter(Mandatory)]
+        [string]
+        $Directory1,
+
+        [Parameter(Mandatory)]
+        [string]
+        $Directory2,
+
+        [Parameter()]
+        [switch]
+        $Hash
+    )
+    if ($Hash) {
+        $dir1 = Get-ChildItem -Recurse $Directory1 | Get-FileHash
+        $dir2 = Get-ChildItem -Recurse $Directory2 | Get-FileHash
+        Compare-Object $dir1 $dir2 -Property Hash
+        return
+    }
+    $dir1 = Get-ChildItem -Recurse $Directory1
+    $dir2 = Get-ChildItem -Recurse $Directory2
+    Compare-Object $dir1 $dir2 -Property Name, Length
 }
 
 # Examples:
@@ -288,36 +318,56 @@ function New-WSLDistribution {
     param (
         [Parameter(Mandatory)]
         [string]
-        [Alias("Source")]
-        $TarFile,
-        
+        [Alias("Name")]
+        $DistroName,
+
         [Parameter(Mandatory)]
         [string]
-        [Alias("Name")]
-        $DistroName
+        [Alias("Source")]
+        $TarFile,
+
+        [Parameter()]
+        [string]
+        [Alias("Drive")]
+        $InstallDrive = "E:"
     )
 
-    $ExistingDistros = wsl -l | Where-Object {$_.Replace("`0","") -match "^$DistroName"}
+    $ExistingDistros = wsl -l | Where-Object { $_.Replace("`0", "") -match "^$DistroName" }
     if ([string]::IsNullOrEmpty($ExistingDistros) -ne $true) {
         Write-Error "Distribution already exists" -ErrorAction Stop
     }
-    $InstallLocation = "C:\wslDistroStorage\$DistroName"
+    $InstallLocation = "$InstallDrive\WSL\$DistroName"
     wsl.exe --import $DistroName $InstallLocation $TarFile
+    @"
+Distribution created successfully.
 
-    Write-Host @'
-    Distribution created successfully.
-    To start the distribution, run the following command:
-    wsl -d $DistroName
+To start the distribution, run the following command:
 
-    To create a user account, run the following command in WSL:
-    dnf update -y && dnf install passwd sudo -y
-    WSL_USER=tom
-    adduser -G wheel $WSL_USER
-    echo -e "[user]\ndefault=$WSL_USER" >> /etc/wsl.conf
-    passwd $WSL_USER
+``````powershell
+wsl -d $DistroName
+``````
 
-    Restart the distribution to apply the changes.
-    wsl -t $DistroName
-    wsl -d $DistroName
-'@
+To create a user account, run the following command in WSL:
+
+``````shell
+dnf update -y && dnf install passwd sudo -y
+WSL_USER=tom
+adduser -G wheel `$WSL_USER
+echo -e "[user]\ndefault=`$WSL_USER" >> /etc/wsl.conf
+passwd `$WSL_USER
+``````
+
+Optionally, set distribution to use systemd as the init system:
+
+``````shell
+echo -e "[boot]\nsystemd=true" >> /etc/wsl.conf
+``````
+
+Restart the distribution to apply the changes.
+
+``````powershell
+wsl -t $DistroName
+wsl -d $DistroName
+``````
+"@ | Show-Markdown
 }
