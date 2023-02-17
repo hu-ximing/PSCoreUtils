@@ -309,7 +309,10 @@ function chext {
 
     foreach ($File in $(Get-Item $Files)) {
         if (Test-Path -Path $File -PathType Leaf) {
-            Rename-Item $File ([io.path]::ChangeExtension($File, $Extention))
+            Move-Item $File ($File.BaseName + '.' + $Extention)
+        }
+        else {
+            Write-Error "The path $File is not a file."
         }
     }
 }
@@ -371,3 +374,23 @@ wsl -d $DistroName
 ``````
 "@ | Show-Markdown
 }
+
+function Get-FullHistory {
+    param (
+        [Parameter()]
+        [switch]
+        [Alias("e")]
+        $Edit
+    )
+    $HistorySavePath = (Get-PSReadlineOption).HistorySavePath
+    if ($Edit) {
+        if (!(Test-Path -Path $DefaultEditor)) {
+            $DefaultEditor = "notepad.exe"
+        }
+        & $DefaultEditor $HistorySavePath
+        return
+    }
+    Get-Content $HistorySavePath
+}
+
+Set-Alias history Get-FullHistory
