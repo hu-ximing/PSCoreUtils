@@ -176,7 +176,7 @@ New-Alias tp Test-TcpPortConnection
 
 function Get-Spotlight {
     $Source = "$env:LOCALAPPDATA\Packages\Microsoft.Windows.ContentDeliveryManager_cw5n1h2txyewy\LocalState\Assets"
-    $Destination = "$env:USERPROFILE\Desktop\spotlight-$(Get-Date -Format "MM-dd")"
+    $Destination = "$env:USERPROFILE\Desktop\spotlight-$(Get-Date -Format "yyMMdd")"
     $WideImageDst = "$Destination\wide"
     $PhoneImageDst = "$Destination\phone"
 
@@ -186,9 +186,7 @@ function Get-Spotlight {
     if (Test-Path -Path $Destination) {
         Write-Error "A directory exists with the same name as the destination directory." -ErrorAction Stop
     }
-    mkdir $Destination
-    mkdir $WideImageDst
-    mkdir $PhoneImageDst
+    mkdir -p $WideImageDst, $PhoneImageDst > $null
 
     $WideImageCollection = @()
     $PhoneImageCollection = @()
@@ -315,64 +313,6 @@ function chext {
             Write-Error "The path $File is not a file."
         }
     }
-}
-
-function New-WSLDistribution {
-    param (
-        [Parameter(Mandatory)]
-        [string]
-        [Alias("Name")]
-        $DistroName,
-
-        [Parameter(Mandatory)]
-        [string]
-        [Alias("Source")]
-        $TarFile,
-
-        [Parameter()]
-        [string]
-        [Alias("Drive")]
-        $InstallDrive = "E:"
-    )
-
-    $ExistingDistros = wsl -l | Where-Object { $_.Replace("`0", "") -match "^$DistroName" }
-    if ([string]::IsNullOrEmpty($ExistingDistros) -ne $true) {
-        Write-Error "Distribution already exists" -ErrorAction Stop
-    }
-    $InstallLocation = "$InstallDrive\WSL\$DistroName"
-    wsl.exe --import $DistroName $InstallLocation $TarFile
-    @"
-Distribution created successfully.
-
-To start the distribution, run the following command:
-
-``````powershell
-wsl -d $DistroName
-``````
-
-To create a user account, run the following command in WSL:
-
-``````shell
-dnf update -y && dnf install passwd sudo -y
-WSL_USER=tom
-adduser -G wheel `$WSL_USER
-echo -e "[user]\ndefault=`$WSL_USER" >> /etc/wsl.conf
-passwd `$WSL_USER
-``````
-
-Optionally, set distribution to use systemd as the init system:
-
-``````shell
-echo -e "[boot]\nsystemd=true" >> /etc/wsl.conf
-``````
-
-Restart the distribution to apply the changes.
-
-``````powershell
-wsl -t $DistroName
-wsl -d $DistroName
-``````
-"@ | Show-Markdown
 }
 
 function Get-FullHistory {
