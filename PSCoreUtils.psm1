@@ -241,7 +241,7 @@ function ln {
 
 function touch {
     if ($args.Count -eq 0) {
-        throw "missing file operand"
+        Write-Error "missing file operand" -ErrorAction Stop
     }
     foreach ($item in $args) {
         New-Item $item
@@ -279,12 +279,6 @@ function Compare-Directory() {
         [switch]
         $Hash
     )
-    if ($Hash) {
-        $dir1 = Get-ChildItem -Recurse $Directory1 | Get-FileHash
-        $dir2 = Get-ChildItem -Recurse $Directory2 | Get-FileHash
-        Compare-Object $dir1 $dir2 -Property Hash
-        return
-    }
     $dir1 = Get-ChildItem -Recurse $Directory1
     $dir2 = Get-ChildItem -Recurse $Directory2
     Compare-Object $dir1 $dir2 -Property Name, Length
@@ -324,7 +318,7 @@ function Get-FullHistory {
     )
     $HistorySavePath = (Get-PSReadlineOption).HistorySavePath
     if ($Edit) {
-        if (!(Test-Path -Path $DefaultEditor)) {
+        if ($null -eq $DefaultEditor) {
             $DefaultEditor = "notepad.exe"
         }
         & $DefaultEditor $HistorySavePath
