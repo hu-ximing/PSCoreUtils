@@ -41,34 +41,30 @@ function grep {
         $Patterns,
         
         [Parameter(Position = 1,
-            ValueFromRemainingArguments)]
+            ValueFromRemainingArguments = $true)]
         [SupportsWildcards()]
         [string[]]
         $Files,
 
-        [Parameter(
-            ValueFromPipeline = $true)]
+        [Parameter(ValueFromPipeline = $true)]
+        [System.Object[]]
         $Content
     )
     
     begin {
-        $output = [System.Collections.Generic.List[object]]::new()
+        # $Output = [System.Collections.Generic.List[object]]::new()
     }
 
     process {
-        $output.Add($Content)
-    }
-
-    end {
         $FilesProvided = $null -ne $Files
         $ContentProvided = $null -ne $Content
 
-        # if both or none of $Files and $Content are provided, stop the function
+        # if both or none of $Files and $Content are provided, return an error
         if ($FilesProvided -eq $ContentProvided) {
             Write-Error -Message "Syntax error." -ErrorAction Stop
         }
 
-        # if there are files provided, search the content of all files
+        # if files are provided, search the content of the files
         if ($FilesProvided) {
             
             foreach ($item in Get-Item($Files)) {
@@ -93,8 +89,14 @@ function grep {
 
         # if the function is invoked with pipeline input, search the resulting string
         if ($ContentProvided) {
-            $output  | Out-String -Stream | Select-String -Pattern $Patterns
+            $Filtered = $Content | Out-String -Stream | Select-String -Pattern $Patterns
+            $Filtered
+            # $Output.Add($Filtered)
         }
+    }
+
+    end {
+        # $Output
     }
 }
 
@@ -172,7 +174,6 @@ function Test-TcpPortConnection {
         
     }
 }
-New-Alias tp Test-TcpPortConnection
 
 function Get-Spotlight {
     $Source = "$env:LOCALAPPDATA\Packages\Microsoft.Windows.ContentDeliveryManager_cw5n1h2txyewy\LocalState\Assets"
@@ -285,8 +286,7 @@ function Compare-Directory() {
 }
 
 # Examples:
-# chext *.log txt
-# chext 1.json,2.ps1,3.jpg txt
+# chext *.cpp, a.log txt
 function chext {
     param (
         [Parameter(Mandatory,
@@ -327,4 +327,62 @@ function Get-FullHistory {
     Get-Content $HistorySavePath
 }
 
+function Get-Size {
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory, ValueFromPipeline)]
+        [System.Object[]]
+        $Items
+    )
+    begin {
+        $Output = [System.Collections.Generic.List[object]]::new()
+    }
+    process {
+        foreach ($Item in $Items) {
+            if ($Item -is [string]) {
+                if (!(Test-Path -Path $Item)) {
+                    Write-Error "$Item does not exist."
+                    continue
+                }
+                $Item = Get-Item $Item
+            }
+            elseif ($Item -isnot [System.IO.DirectoryInfo] -and
+                $Item -isnot [System.IO.FileInfo]) {
+                Write-Error "The item $Item is not a file or directory."
+                continue
+            }
+            
+            $ChildItems = Get-ChildItem -Recurse -Force $Item
+            $Info = $ChildItems | Measure-Object -Property Length -Sum
+
+            if ($Info.Sum -ge 1GB) {
+                $Size = "{0:N2} GB" -f ($Info.Sum / 1GB)
+            }
+            elseif ($Info.Sum -ge 1MB) {
+                $Size = "{0:N2} MB" -f ($Info.Sum / 1MB)
+            }
+            elseif ($Info.Sum -ge 1KB) {
+                $Size = "{0:N2} KB" -f ($Info.Sum / 1KB)
+            }
+            else {
+                $Size = "{0:N0} bytes" -f $Info.Sum
+            }
+            $Size += " ({0:N0} bytes)" -f $Info.Sum
+
+            $Output += [PSCustomObject]@{
+                Size    = $Size
+                Bytes   = "a"
+                Files   = $Info.Count
+                Folders = ($ChildItems | Where-Object { $_.PSIsContainer }).Count
+                Path    = $Item.FullName
+            }
+        }
+    }
+    end {
+        $Output | Format-Table -AutoSize
+    }
+}
+
+New-Alias tp Test-TcpPortConnection
+New-Alias du Get-Size
 Set-Alias history Get-FullHistory

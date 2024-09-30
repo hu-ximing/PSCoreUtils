@@ -97,7 +97,6 @@ PowerShell 7 custom utility modules.
   Name  Length SideIndicator
   ----  ------ -------------
   a.txt      0 => # a.txt is empty in dir2
-  c.txt      0 => # c.txt is only in dir2
   a.txt      6 <= # a.txt is modified in dir1
   b.txt      0 <= # b.txt is only in dir1
   ```
@@ -118,4 +117,24 @@ PowerShell 7 custom utility modules.
   
   ```powershell
   history # history is print to the console
+  ```
+
+- `Get-Size` or `du`
+
+  Prints total size, file count, folder count of specified items.
+
+  ```powershell
+  Get-Size C:\msys64\
+  ```
+
+  ```txt
+  Size                          Files Folders Path
+  ----                          ----- ------- ----
+  1.28 GB (1,370,990,465 bytes) 54779    2319 C:\msys64\
+  ```
+
+  It can also be used in a pipeline:
+
+  ```powershell
+  Get-Item dir1, dir2 | Get-Size
   ```
