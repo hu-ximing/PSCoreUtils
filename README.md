@@ -58,7 +58,7 @@ PowerShell 7 custom utility modules.
   touch 1.txt
   ```
 
-- `Get-Image`
+- `Get-ImageInfo`
   
   Gets details of a image file.
   
@@ -83,6 +83,22 @@ PowerShell 7 custom utility modules.
   PropertyItems        : {271, 272, 282, 283…}
   Palette              : System.Drawing.Imaging.ColorPalette
   FrameDimensionsList  : {7462dc86-6180-4c7e-8e3f-ee7333a7a483}
+  ```
+
+- `Start-FolderWatch`
+
+  Watch a folder's change in real time.
+
+  ```txt
+  PS D:\tmp> Start-FolderWatch .
+  ●  Monitoring started on 'D:\tmp'. Press Ctrl+C to stop.
+  [2025-07-15 22:27:18] DELETED: D:\tmp\file.txt
+  [2025-07-15 22:27:22] CREATED: D:\tmp\file.txt
+  [2025-07-15 22:27:24] CHANGED: D:\tmp\file.txt
+  [2025-07-15 22:27:24] CHANGED: D:\tmp\file.txt
+  [2025-07-15 22:27:38] RENAMED: 'D:\tmp\file.txt' to 'D:\tmp\file1'
+  [2025-07-15 22:27:46] CREATED: D:\tmp\dir1
+  ○ Monitoring stopped.
   ```
 
 - `Compare-Directory`

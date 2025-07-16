@@ -178,8 +178,10 @@ function Test-TcpPortConnection {
 function Get-Spotlight {
     $Source = "$env:LOCALAPPDATA\Packages\Microsoft.Windows.ContentDeliveryManager_cw5n1h2txyewy\LocalState\Assets"
     $Destination = "$env:USERPROFILE\Desktop\spotlight-$(Get-Date -Format "yyMMdd")"
-    $WideImageDst = "$Destination\wide"
+    $DesktopImageDst = "$Destination\desktop"
     $PhoneImageDst = "$Destination\phone"
+    $StoredImageDst = "D:\pictures\Microsoft\spotlight"
+    $StoredImages = Get-ChildItem -Recurse $StoredImageDst
 
     if (!(Test-Path -Path $Source)) {
         Write-Error "The source directory is inaccessible." -ErrorAction Stop
@@ -187,29 +189,35 @@ function Get-Spotlight {
     if (Test-Path -Path $Destination) {
         Write-Error "A directory exists with the same name as the destination directory." -ErrorAction Stop
     }
-    mkdir -p $WideImageDst, $PhoneImageDst > $null
+    mkdir -p "$DesktopImageDst\duplicated", "$DesktopImageDst\new", $PhoneImageDst > $null
 
-    $WideImageCollection = @()
-    $PhoneImageCollection = @()
+    $DesktopDuplicationCount = 0
+    $DesktopNewCount = 0
 
     foreach ($img in Get-ChildItem $Source) {
         $ImgData = New-Object System.Drawing.Bitmap $img.FullName
-        if ($ImgData.Width -ge 1920 -and
-            $ImgData.Height -ge 1080) {
-            $WideImageCollection += $img
+        # 1920x1080 for desktop
+        if ($ImgData.Width -ge 1920 -and $ImgData.Height -ge 1080) {
+            if ($StoredImages | Where-Object { $_.BaseName -eq $img.Name }) {
+                # duplicated images
+                $DesktopDuplicationCount++
+                Copy-Item $img "$DesktopImageDst\duplicated\$($img.Basename)`.jpg"
+            }
+            else {
+                # new images
+                $DesktopNewCount++
+                Copy-Item $img "$DesktopImageDst\new\$($img.Basename)`.jpg"
+                Copy-Item $img "$StoredImageDst\$($img.Basename)`.jpg"
+            }
         }
-        elseif ($ImgData.Width -ge 1080 -and
-            $ImgData.Height -ge 1920) {
-            $PhoneImageCollection += $img
+        # 1080x1920 for phone
+        elseif ($ImgData.Width -ge 1080 -and $ImgData.Height -ge 1920) {
+            Copy-Item $img "$PhoneImageDst\$($img.Basename)`.jpg"
         }
     }
-    Copy-Item $WideImageCollection $WideImageDst
-    Copy-Item $PhoneImageCollection $PhoneImageDst
-    foreach ($item in (Get-ChildItem -Recurse $Destination)) {
-        if (Test-Path -Path $item.FullName -PathType Leaf) {
-            Rename-Item $item "$($item.Basename)`.jpg"
-        }
-    }
+
+    Write-Host "Desktop: $DesktopNewCount new images, $DesktopDuplicationCount duplicated images."
+    Write-Host "Phone: $($(Get-ChildItem $PhoneImageDst).Count) images."
 }
 
 function ln {
@@ -249,22 +257,147 @@ function touch {
     }
 }
 
-function Get-Image {
+function Get-ImageInfo {
     param (
         [Parameter(Mandatory)]
         [string[]]
-        $Path
+        $Paths
     )
-    $FullPaths = @()
-    foreach ($Item in $Path) {
-        $FullPaths += (Get-Item $Item).FullName
-    }
+
     Add-Type -AssemblyName System.Drawing
-    foreach ($Item in $FullPaths) {
-        $Image = New-Object System.Drawing.Bitmap $Item
-        Write-Output $Item, $Image
+
+    # EXIF Property Tag ID for "Date Taken". A full list can be found online.
+    # 0x9003 for DateTimeOriginal
+    $exifDateTakenId = 0x9003
+
+    foreach ($Path in $Paths) {
+        if (!(Test-Path -Path $Path -PathType Leaf)) {
+            Write-Error "Cannot find file `"$Path`"."
+            continue
+        }
+        
+        $Item = Get-Item $Path
+        $ImageInfo = $null
+
+        try {
+            # Create the new Bitmap object
+            $ImageInfo = [System.Drawing.Bitmap]::new($Item.FullName)
+
+            # --- Extract EXIF Date Taken ---
+            $DateTaken = $null
+            # Check if the property ID exists in the image
+            if ($ImageInfo.PropertyIdList -contains $exifDateTakenId) {
+                $PropertyItem = $ImageInfo.GetPropertyItem($exifDateTakenId)
+                # The value is a null-terminated ASCII string. We need to decode it.
+                $DateTaken = [System.Text.Encoding]::ASCII.GetString($PropertyItem.Value).TrimEnd("`0")
+            }
+
+            # --- Create a structured output object ---
+            [PSCustomObject]@{
+                FullName             = $Item.FullName
+                PhysicalDimension    = $ImageInfo.PhysicalDimension
+                Size                 = $ImageInfo.Size
+                Width                = $ImageInfo.Width
+                Height               = $ImageInfo.Height
+                HorizontalResolution = $ImageInfo.HorizontalResolution
+                VerticalResolution   = $ImageInfo.VerticalResolution
+                Flags                = $ImageInfo.Flags
+                RawFormat            = $ImageInfo.RawFormat
+                PixelFormat          = $ImageInfo.PixelFormat
+                DateTaken            = $DateTaken
+            }
+        }
+        catch {
+            # Handle potential errors, e.g., file is not a valid image format
+            Write-Error "Could not process '$($Item.FullName)'. Error: $_"
+        }
+        finally {
+            # This block ALWAYS runs, ensuring the object is disposed.
+            if ($null -ne $ImageInfo) {
+                $ImageInfo.Dispose()
+            }
+        }
     }
 }
+
+function Start-FolderWatch {
+    param (
+        [Parameter(Mandatory)]
+        [string]
+        $FolderToWatch
+    )
+
+    # 1. Resolve the path and ensure the folder exists
+    $ResolvedPath = (Resolve-Path -Path $FolderToWatch).Path
+    if (!(Test-Path -Path $ResolvedPath -PathType Container)) {
+        Write-Error "The folder '$ResolvedPath' does not exist." -ErrorAction Stop
+    }
+
+    # 2. Set up the watcher object with a specific NotifyFilter
+    $Watcher = New-Object System.IO.FileSystemWatcher
+    $Watcher.Path = $ResolvedPath
+    $Watcher.IncludeSubdirectories = $true
+    
+    # This is the key to preventing duplicate events. We only care about changes to names and write times.
+    $Watcher.NotifyFilter = [System.IO.NotifyFilters]::LastWrite `
+        -bor [System.IO.NotifyFilters]::FileName `
+        -bor [System.IO.NotifyFilters]::DirectoryName
+
+    # 3. Define the action to take when an event occurs
+    $Action = {
+        $Path = $Event.SourceEventArgs.FullPath
+        $ChangeType = $Event.SourceEventArgs.ChangeType
+        $TimeStamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+
+        # For rename events, provide more detail
+        if ($ChangeType -eq 'Renamed') {
+            $OldPath = $Event.SourceEventArgs.OldFullPath
+            $Message = "'$OldPath' to '$Path'"
+            $Color = 'Cyan'
+        }
+        else {
+            $Message = "$Path"
+            $Color = switch ($ChangeType) {
+                'Created' { 'Green' }
+                'Changed' { 'Yellow' }
+                'Deleted' { 'Red' }
+            }
+        }
+        
+        # Write-Host is used for colored console-only output
+        Write-Host "[$TimeStamp] " -NoNewline
+        Write-Host "$($ChangeType.ToString().ToUpper())`: $Message" -ForegroundColor $Color
+    }
+
+    # 4. Register the events and store the subscription jobs✅
+    $Events = @(
+        Register-ObjectEvent $Watcher "Created" -Action $Action
+        Register-ObjectEvent $Watcher "Changed" -Action $Action
+        Register-ObjectEvent $Watcher "Deleted" -Action $Action
+        Register-ObjectEvent $Watcher "Renamed" -Action $Action
+    )
+
+    Write-Host "● " -ForegroundColor Green -NoNewline
+    Write-Host " Monitoring started on '$ResolvedPath'. Press Ctrl+C to stop."
+    
+    # 5. Keep the script alive and clean up properly on exit
+    try {
+        # This loop keeps the script from exiting, allowing events to be processed
+        while ($true) {
+            Wait-Event -Timeout 1 | Out-Null
+        }
+    }
+    finally {
+        # Unregister all events and dispose of the watcher
+        $Events | ForEach-Object { Unregister-Event -SubscriptionId $_.Id }
+        $Watcher.EnableRaisingEvents = $false
+        $Watcher.Dispose()
+
+        # This block runs when you press Ctrl+C🛑
+        Write-Host "○ Monitoring stopped."
+    }
+}
+
 
 function Compare-Directory() {
     param (
