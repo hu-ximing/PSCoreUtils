@@ -324,11 +324,16 @@ function Start-FolderWatch {
     param (
         [Parameter(Mandatory)]
         [string]
-        $FolderToWatch
+        $Path,
+
+        [Parameter()]
+        [ValidateSet('Created', 'Changed', 'Deleted', 'Renamed')]
+        [string[]]
+        $NotifyType = @('Created', 'Changed', 'Deleted', 'Renamed')
     )
 
     # 1. Resolve the path and ensure the folder exists
-    $ResolvedPath = (Resolve-Path -Path $FolderToWatch).Path
+    $ResolvedPath = (Resolve-Path -Path $Path).Path
     if (!(Test-Path -Path $ResolvedPath -PathType Container)) {
         Write-Error "The folder '$ResolvedPath' does not exist." -ErrorAction Stop
     }
@@ -369,16 +374,14 @@ function Start-FolderWatch {
         Write-Host "$($ChangeType.ToString().ToUpper())`: $Message" -ForegroundColor $Color
     }
 
-    # 4. Register the events and store the subscription jobs✅
-    $Events = @(
-        Register-ObjectEvent $Watcher "Created" -Action $Action
-        Register-ObjectEvent $Watcher "Changed" -Action $Action
-        Register-ObjectEvent $Watcher "Deleted" -Action $Action
-        Register-ObjectEvent $Watcher "Renamed" -Action $Action
-    )
+    # 4. Register the events and store the subscription jobs
+    $Events = @()
+    foreach ($Type in $NotifyType) {
+        $Events += Register-ObjectEvent $Watcher $Type -Action $Action
+    }
 
     Write-Host "● " -ForegroundColor Green -NoNewline
-    Write-Host " Monitoring started on '$ResolvedPath'. Press Ctrl+C to stop."
+    Write-Host "Monitoring started on '$ResolvedPath'. Press Ctrl+C to stop."
     
     # 5. Keep the script alive and clean up properly on exit
     try {
@@ -393,7 +396,7 @@ function Start-FolderWatch {
         $Watcher.EnableRaisingEvents = $false
         $Watcher.Dispose()
 
-        # This block runs when you press Ctrl+C🛑
+        # This block runs when you press Ctrl+C
         Write-Host "○ Monitoring stopped."
     }
 }
